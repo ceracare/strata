@@ -40,9 +40,11 @@ jobs:
 
       - run: pnpm build
         env:
-          # Site URL is configured for the github.io URL pattern. Override
-          # by setting SITE_URL secret if you have a custom domain.
+          # Site URL + base path for GitHub Pages at
+          # `<owner>.github.io/<repo>/`. Override both with secrets when
+          # serving from a custom domain at root (SITE_BASE="/").
           SITE_URL: ${{ secrets.SITE_URL || format('https://{0}.github.io', github.repository_owner) }}
+          SITE_BASE: ${{ secrets.SITE_BASE || format('/{0}/', github.event.repository.name) }}
 
       - uses: actions/configure-pages@v5
 
