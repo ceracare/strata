@@ -171,14 +171,15 @@ def stop_nudge_text(snap: dict[str, Any]) -> str:
     return (
         f"`{branch}`: {state}{hot_str}. "
         f"Suggested topic: `{topic}`. "
-        f"Run `/strata:nudge` to draft, or "
-        f"`/strata:save --topic {topic}` to save directly."
+        f"Run `/strata:save --topic {topic}` to save, "
+        f"or `/strata:save --draft` to review a pre-filled draft first."
     )
 
 
 def draft_note_body(snap: dict[str, Any]) -> str:
-    """Multi-line markdown draft for /strata:nudge. Pre-filled bullets
-    based on the session state — the user / Claude edits before saving."""
+    """Multi-line markdown draft used by /strata:save when invoked from the
+    Stop-hook flow. Pre-fills bullets from the session state — the user
+    or Claude edits before saving."""
     if not snap.get("available"):
         return "_no session data available_"
 

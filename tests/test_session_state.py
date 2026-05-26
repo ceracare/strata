@@ -77,7 +77,6 @@ def test_stop_nudge_text_is_one_liner(env, session_state):
     snap = session_state.snapshot()
     text = session_state.stop_nudge_text(snap)
     assert "feat-test-branch" in text or "test-branch" in text
-    assert "/strata:nudge" in text
     assert "/strata:save" in text
     # Single line — keep it terminal-friendly
     assert "\n" not in text
