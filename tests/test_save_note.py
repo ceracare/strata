@@ -124,7 +124,10 @@ def test_apply_draft_fails_when_no_draft_stashed(initialised_vault):
 
 def test_apply_draft_ignores_stale_drafts(initialised_vault):
     """A draft older than 24h is treated as no-draft."""
-    import draft_store, json, time
+    import json
+    import time
+
+    import draft_store
     draft_store.stash_draft(topic="t", branch_slug="b", body="x")
     # Backdate to 25h ago
     path = draft_store._draft_path()

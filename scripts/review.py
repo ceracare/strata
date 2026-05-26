@@ -102,10 +102,7 @@ def main() -> int:
                 push(
                     "  → reason: " + age_info["reason"]
                 )
-                push(
-                    "  → rebuild: `graphify update . --obsidian "
-                    "--obsidian-dir <vault>/<repo>/graphify`"
-                )
+                push("  → rebuild: `/strata:graphify`")
         push("")
 
         # 5b. Drifted notes — dual-axis drift detection

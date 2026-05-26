@@ -43,9 +43,7 @@ def _should_draft(snap: dict) -> bool:
         return True
     if commits >= 1 and uncommitted >= 3:
         return True
-    if uncommitted >= 8:
-        return True
-    return False
+    return uncommitted >= 8
 
 
 def _last_pr_note_mtime(slug: str) -> float | None:

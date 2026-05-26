@@ -78,34 +78,42 @@ it from your fork's README. We'll happily reference it.
 
 ## Pairing Graphify so code structure appears in Obsidian's graph view
 
-[Graphify](https://graphifylabs.ai) writes per-node markdown notes when you
-pass `--obsidian-dir`. Point it at your Strata vault and code nodes show
-up in Obsidian's graph view alongside your decisions and domain notes:
+[Graphify](https://graphifylabs.ai) extracts code structure into
+`graphify-out/graph.json`. Strata reads that file and writes one
+markdown note per node into `<vault>/<repo>/graphify/` with
+`[[wikilinks]]` for every edge, so Obsidian's graph view shows code
+nodes alongside your decisions and domain notes.
 
-```bash
-# After: pip install graphifyy
-graphify update . --obsidian --obsidian-dir ~/StrataVault/<repo>/graphify
-```
+The integration is built into `/strata:graphify`:
 
-Or use the Strata orchestration skill, which defaults the path correctly:
-
-```
+```text
 /strata:graphify
 ```
 
-With this layout:
+That single command:
+
+1. Runs `graphify update .` (AST-only, no LLM, no network) to produce
+   `graphify-out/graph.json`.
+2. Reads `graph.json` and writes per-node markdown into
+   `<vault>/<repo>/graphify/`. Pure-mechanical, no LLM key required.
+
+Pass `--no-obsidian` if you want only the graph build without the
+vault export. The vault wiring is the default.
+
+Resulting layout:
 
 ```
 ~/StrataVault/<repo>/
-├── decisions/                  # ADRs (Strata)
-├── domain/                     # vocabulary (Strata)
-├── pr-context/                 # per-branch notes (Strata)
-└── graphify/                   # per-function/-class/-module nodes (Graphify)
+├── decisions/                  # ADRs (Strata-managed)
+├── domain/                     # vocabulary (Strata-managed)
+├── pr-context/                 # per-branch notes (Strata-managed)
+└── graphify/                   # per-function/-class/-module nodes
+                                 (regenerated from graph.json by Strata)
 ```
 
-…Obsidian's graph view shows one continuous knowledge graph: a decision
+Obsidian's graph view shows one continuous knowledge graph: a decision
 note that wikilinks `[[MedicationService]]` visually connects to the
-Graphify-generated note for that class.
+Strata-generated node for that class.
 
 On the Strata side, `memory_graph` MCP tool **resolves unresolved
 wikilinks against graph.json node names** — so a vault wikilink like
