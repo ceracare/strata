@@ -28,8 +28,8 @@ STRATA_NOTE
 ### Draft (interactive review)
 
 User says "draft a save", "what would you save", or you're at the Stop-hook
-Nudge and want help. Build a draft from real git state, then ask before
-Writing.
+nudge and want help. Build a draft from real git state, then ask before
+writing.
 
 1. Snapshot the session:
 
@@ -51,6 +51,30 @@ The draft has four sections: `What was done` (from commits), `In progress`
 
 3. On accept, pipe the final body through save-note.py with the topic
    from the draft.
+
+### Apply-draft (one-keystroke acceptance of a Stop-hook offer)
+
+When the Stop hook stashes a pre-filled draft (it does this when the
+session crossed a signal threshold: 3+ commits, or 1+ commit with 3+
+uncommitted files, or 8+ uncommitted files), the user can save it as-is
+with no further prompting:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/bin/run-python.sh" \
+  "${CLAUDE_PLUGIN_ROOT}/scripts/save-note.py" \
+  --apply-draft
+```
+
+The script reads `${PLUGIN_DATA}/pending-draft.json`, writes it to the
+current branch's `pr-context/` folder, and clears the stash. Drafts older
+than 24h are silently dropped (treat as no-op).
+
+If the user wants to edit the draft first, snapshot it, present it, then
+apply with the edited body (drop the stash via `import draft_store;
+draft_store.clear_draft()` after, or let it expire naturally).
+
+The stash only fires from the Stop hook when there's enough signal; the
+user never sees a draft offer for trivial sessions.
 
 ## What to write (in a save body)
 

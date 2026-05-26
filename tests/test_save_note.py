@@ -87,3 +87,58 @@ def test_scope_lessons_no_branch_in_frontmatter(initialised_vault):
     note = next((mem / "lessons").glob("*historical-context.md"))
     fm = note.read_text().split("---")[1]
     assert "branch:" not in fm
+
+
+# ---------- --apply-draft (Stop-hook draft-acceptance flow) ----------
+
+def test_apply_draft_writes_pr_context_note(initialised_vault):
+    """A stashed draft applied via --apply-draft lands in pr-context/<branch>/
+    with the draft's topic + body. The stash is cleared afterward."""
+    import draft_store
+    mem = initialised_vault
+    draft_store.stash_draft(
+        topic="feat-x-session",
+        branch_slug="feat-test-branch",
+        body="# feat-x-session\n\n## What was done\n- bullet\n",
+    )
+
+    r = _run("--apply-draft", body="", env=os.environ.copy())
+    assert r.returncode == 0, f"stderr: {r.stderr}"
+
+    pr = mem / "pr-context" / "feat-test-branch"
+    matches = list(pr.glob("*--feat-x-session.md"))
+    assert matches, f"expected note, got nothing in {pr}"
+    saved = matches[0].read_text()
+    assert "## What was done" in saved
+    assert "- bullet" in saved
+    # Stash should be cleared on successful apply
+    assert draft_store.load_draft() is None
+
+
+def test_apply_draft_fails_when_no_draft_stashed(initialised_vault):
+    """No stash → --apply-draft exits non-zero with a clear message."""
+    r = _run("--apply-draft", body="", env=os.environ.copy())
+    assert r.returncode != 0
+    assert "no pending draft" in r.stderr
+
+
+def test_apply_draft_ignores_stale_drafts(initialised_vault):
+    """A draft older than 24h is treated as no-draft."""
+    import draft_store, json, time
+    draft_store.stash_draft(topic="t", branch_slug="b", body="x")
+    # Backdate to 25h ago
+    path = draft_store._draft_path()
+    payload = json.loads(path.read_text())
+    payload["generated_at"] = time.time() - 25 * 60 * 60
+    path.write_text(json.dumps(payload))
+
+    r = _run("--apply-draft", body="", env=os.environ.copy())
+    assert r.returncode != 0
+    assert "no pending draft" in r.stderr
+
+
+def test_topic_required_without_apply_draft(initialised_vault):
+    """Without --topic and without --apply-draft, save-note refuses."""
+    r = _run("--kind", "session", body="some body", env=os.environ.copy())
+    assert r.returncode != 0
+    assert "--topic is required" in r.stderr or "topic" in r.stderr.lower()

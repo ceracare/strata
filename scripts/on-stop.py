@@ -25,6 +25,29 @@ TRUNK_BRANCHES = {"main", "master", "develop", "trunk", "default"}
 COOLDOWN_SECONDS = 30 * 60  # 30 minutes
 
 
+def _should_draft(snap: dict) -> bool:
+    """Whether the session has enough signal to stash a pre-filled draft
+    instead of just the one-liner nudge. The thresholds aim for ~once per
+    real work session, near-zero on tiny commits, never on pure noise.
+
+    Triggers (any of):
+      • 3+ commits in the session window
+      • 1+ commit + 3+ uncommitted files (mid-flight feature work)
+      • 8+ uncommitted files (substantial work-in-progress on a branch)
+    """
+    if not snap.get("available"):
+        return False
+    commits = len(snap.get("commits", []))
+    uncommitted = len(snap.get("uncommitted", []))
+    if commits >= 3:
+        return True
+    if commits >= 1 and uncommitted >= 3:
+        return True
+    if uncommitted >= 8:
+        return True
+    return False
+
+
 def _last_pr_note_mtime(slug: str) -> float | None:
     dir_ = memory_dir() / "pr-context" / slug
     if not dir_.exists():
@@ -89,15 +112,33 @@ def main() -> int:
     if not nudge:
         return 0
 
-    _mark_fired()
-
     # Rich session snapshot: commits + uncommitted + hot paths + topic
     # suggestion. Falls back gracefully if nothing's available.
+    # NOTE: this runs BEFORE _mark_fired() so the session window
+    # (which uses the cooldown stamp as its lower bound) still sees
+    # activity from the current session. Marking before snapshotting
+    # collapses the window to "now" and misses every commit.
     summary = ""
+    drafted = False
     try:
         import session_state
         snap = session_state.snapshot()
         summary = session_state.stop_nudge_text(snap)
+
+        # If the session crossed the signal threshold, stash a pre-filled
+        # draft in plugin-data. The user accepts it via
+        # `/strata:save --apply-draft`. The vault is NOT written here.
+        if _should_draft(snap):
+            try:
+                import draft_store
+                draft_store.stash_draft(
+                    topic=snap.get("suggested_topic") or "session-summary",
+                    branch_slug=branch_slug(snap.get("branch") or ""),
+                    body=session_state.draft_note_body(snap),
+                )
+                drafted = True
+            except Exception:
+                drafted = False
     except Exception:
         summary = ""
 
@@ -116,7 +157,14 @@ def main() -> int:
 
     # Stop hooks don't accept hookSpecificOutput.additionalContext — the
     # right top-level field is `systemMessage`.
-    if summary:
+    if drafted:
+        # A draft is stashed in plugin-data. Offer one-keystroke acceptance.
+        message = (
+            "💭 Strata: " + summary +
+            "  A draft is ready — run `/strata:save --apply-draft` to save it as-is "
+            "(or `--apply-draft --edit` to revise first)." + extra
+        )
+    elif summary:
         message = "💭 Strata: " + summary + extra
     else:
         branch = current_branch()
@@ -126,6 +174,9 @@ def main() -> int:
             f"covering what was done, decided, and left open." + extra
         )
     sys.stdout.write(json.dumps({"systemMessage": message}))
+    # Mark the cooldown AFTER we've used the previous cooldown stamp to
+    # bound the session window. See the note above.
+    _mark_fired()
     return 0
 
 

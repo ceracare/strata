@@ -42,8 +42,10 @@ from lib import (
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--topic", required=True,
-                    help="Short topic — used in filename")
+    ap.add_argument("--topic", default=None,
+                    help="Short topic — used in filename. Required unless "
+                         "--apply-draft is set (which supplies topic + body "
+                         "from the Stop-hook stashed draft).")
     ap.add_argument("--kind", default="session",
                     choices=["session", "review", "decision-draft",
                              "investigation", "handoff"])
@@ -62,7 +64,35 @@ def main() -> int:
                          "resolution. Same effect as setting STRATA_PROJECT_DIR. "
                          "Use this when invoking save-note.py from a directory "
                          "other than the target project's repo root.")
+    ap.add_argument("--apply-draft", action="store_true",
+                    help="Consume the pending draft stashed by the Stop hook. "
+                         "Reads topic + body from ${PLUGIN_DATA}/pending-draft.json "
+                         "and writes it as a pr-context session note. Mutually "
+                         "exclusive with --topic + stdin body. Drafts older than "
+                         "24h are silently ignored.")
     args = ap.parse_args()
+
+    # --apply-draft hydrates topic + body from the stashed draft so the user
+    # gets one-keystroke acceptance of the Stop-hook offer. The body still
+    # gets written through the same code path below, so frontmatter +
+    # indexing semantics stay identical.
+    apply_draft_body: str | None = None
+    if args.apply_draft:
+        import draft_store
+        draft = draft_store.load_draft()
+        if draft is None:
+            print("[strata] error: no pending draft to apply (none stashed, "
+                  "or older than 24h)", file=sys.stderr)
+            return 2
+        if args.topic is None:
+            args.topic = draft["topic"]
+        args.kind = draft.get("kind", args.kind)
+        apply_draft_body = draft["body"]
+
+    if not args.topic:
+        print("[strata] error: --topic is required (or pass --apply-draft "
+              "to consume a stashed draft)", file=sys.stderr)
+        return 2
 
     if args.project_dir:
         import os as _os
@@ -76,7 +106,10 @@ def main() -> int:
                 expanded.append(piece)
     args.source_file = expanded
 
-    body = sys.stdin.read().strip()
+    if apply_draft_body is not None:
+        body = apply_draft_body.strip()
+    else:
+        body = sys.stdin.read().strip()
     if not body:
         print("[strata] error: empty body on stdin", file=sys.stderr)
         return 2
@@ -129,6 +162,12 @@ def main() -> int:
 
     write_text(path, frontmatter_str + body + "\n")
     print(f"[strata] saved {path}")
+
+    # Successful apply consumes the stashed draft so it can't be applied
+    # twice. Failure paths above leave the draft in place for retry.
+    if args.apply_draft:
+        import draft_store
+        draft_store.clear_draft()
 
     # Refresh index so the new note is discoverable
     import importlib.util

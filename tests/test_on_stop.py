@@ -91,3 +91,48 @@ def test_nudges_when_save_is_old(initialised_vault):
 
     r = _run(env=os.environ.copy())
     assert r.stdout, "should nudge despite old save"
+
+
+# ---------- Stop-hook draft-stashing (signal-threshold path) ----------
+
+def _git_in(repo, *args):
+    import subprocess as sp
+    sp.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+
+def test_stop_hook_stashes_draft_when_threshold_met(initialised_vault, env):
+    """3+ commits on a feature branch → draft stashed in plugin-data and
+    Stop output mentions /strata:save --apply-draft."""
+    import draft_store
+    repo = env["repo"]
+    # Make 3 commits
+    for i in range(3):
+        (repo / f"f{i}.py").write_text(f"# {i}\n")
+        _git_in(repo, "add", f"f{i}.py")
+        _git_in(repo, "commit", "-qm", f"feat: change {i}")
+
+    r = _run(env=os.environ.copy())
+    assert r.returncode == 0
+    assert r.stdout, "expected systemMessage payload"
+
+    payload = json.loads(r.stdout)
+    msg = payload["systemMessage"]
+    assert "--apply-draft" in msg, f"missing apply-draft hint: {msg!r}"
+
+    draft = draft_store.load_draft()
+    assert draft is not None
+    assert "What was done" in draft["body"]
+    # Topic should reflect the branch
+    assert "test-branch" in draft["topic"] or draft["topic"] == "session-summary"
+
+
+def test_stop_hook_no_draft_below_threshold(initialised_vault, env):
+    """0 commits + 0 uncommitted → still nudge, but NO draft stashed."""
+    import draft_store
+    r = _run(env=os.environ.copy())
+    assert r.returncode == 0
+    # Nudge fires (vault initialised, feature branch) but no draft
+    assert r.stdout
+    payload = json.loads(r.stdout)
+    assert "--apply-draft" not in payload["systemMessage"]
+    assert draft_store.load_draft() is None
