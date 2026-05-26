@@ -24,12 +24,13 @@ from lib import (
     vault_root,
 )
 
-PRIMER_CHAR_BUDGET = 1800
+PRIMER_CHAR_BUDGET = 3500
 RECENT_DECISIONS = 3
 PR_NOTES_TAIL = 3
+FILES_WITH_CONTEXT_LIMIT = 6
 
 
-def _excerpt(path, max_lines: int = 25) -> str:
+def _excerpt(path, max_lines: int = 12) -> str:
     try:
         with path.open("r", encoding="utf-8", errors="replace") as fh:
             head = []
@@ -55,6 +56,20 @@ def build_primer() -> str:
          + (f" @ branch `{branch}`" if is_git_repo() else ""))
     push(f"_vault: {vault_root()}_")
     push("")
+
+    # Legend + token economy. Both are best-effort — never block the
+    # primer if they fail to compute.
+    try:
+        import primer_format
+        push(primer_format.legend_line())
+        econ_line = primer_format.format_economy(
+            primer_format.compute_economy(mem)
+        )
+        if econ_line:
+            push(econ_line)
+        push("")
+    except Exception:
+        pass
 
     if not mem.exists():
         # Zero-prompt auto-init on first SessionStart. Safe: just creates
@@ -83,6 +98,22 @@ def build_primer() -> str:
             push(f"_No memory at `{memory_display()}` yet "
                  f"(auto-init failed: {e}). Run `/strata:init`._")
             return "\n".join(out) + "\n"
+
+    # Files with recent context — inverse index from notes' source_file
+    # frontmatter. Lets readers landing in a file see which notes touched
+    # it without running a search. Placed early because it's the most
+    # navigation-relevant block and stays compact.
+    try:
+        import primer_format
+        file_index = primer_format.index_by_source_file(
+            mem, limit=FILES_WITH_CONTEXT_LIMIT
+        )
+        files_block = primer_format.format_files_section(mem, file_index)
+        if files_block:
+            push(files_block)
+            push("")
+    except Exception:
+        pass
 
     # Active PR context for this branch (only if we have a branch)
     prdir = pr_context_dir(slug) if slug else None
